@@ -1,13 +1,8 @@
 streamlit
-
 langchain
-
+langchain-community
 langchain-cohere
-
 langgraph
-
 yfinance
-
 python-dotenv
-
 duckduckgo-search
