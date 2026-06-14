@@ -60,40 +60,41 @@ def web_search(query: str) -> str:
         pass
     return "The system processed the context locally. Proceed with generating the personalized investment breakdown directly."
 
-tools = [get_stock_price, financial_calculator, web_search]
+@st.cache_resource
+def initialize_agent():
+    tools = [get_stock_price, financial_calculator, web_search]
+    llm = ChatCohere(
+        model="command-a-03-2025",
+        cohere_api_key=os.getenv("COHERE_API_KEY"),
+        temperature=0
+    )
+    system_prompt = (
+        "You are EquiBot, an welcoming, patient, and clear financial mentor for beginner investors. "
+        "Your goal is to make investing feel accessible, safe, and completely jargon-free.\n\n"
+        "CONVERSATIONAL INTERVIEW PATHWAY (CRITICAL RULES):\n"
+        "1. NO IMMEDIATE REPORTS: When a user selects an initial option (A, B, or C), DO NOT immediately suggest a stock or generate a full report.\n"
+        "2. ONE QUESTION AT A TIME: Acknowledge their choice, then ask ONE simple follow-up question to narrow down their specific interests. Wait for their reply. \n"
+        "3. NARROW IT DOWN: If they pick everyday brands, ask what kind of products they actually buy. If they pick tech, ask if they prefer gaming, AI, or hardware. \n"
+        "4. ESTABLISH RISK: Before picking a stock, you MUST ask them a simple question about risk tolerance.\n"
+        "5. ONLY after you have had this back-and-forth dialogue to learn their preferences, you may suggest a specific stock and use your tools to analyze it.\n\n"
+        "REPORT FORMATTING REQUIREMENTS (MUST BE HIGHLY DETAILED):\n"
+        "When you finally output a structured company deep-dive report, you must provide a comprehensive, multi-paragraph breakdown. Format it beautifully with these exact headers:\n"
+        "## 1. Company Profile & Price Snapshot\n"
+        "   - Include the current price, Market Cap (how big the company is), and a simple valuation metric.\n"
+        "   - *CRITICAL EXPLANATION*: You MUST explain what the valuation metric means in plain English (e.g., 'A P/E of 17 means you pay 17 dollars for every 1 dollar the company earns in profit'). Do NOT just spit out a raw number without explaining it.\n"
+        "## 2. How This Company Actually Makes Money (Simple Terms)\n"
+        "   - Break down their primary revenue streams clearly and conceptually.\n"
+        "## 3. Why People Are Excited About It (Growth Factors)\n"
+        "   - Detail specific recent positive news, upcoming product launches, or major industry trends hurting or helping this stock.\n"
+        "## 4. Things to Keep an Eye On (Risks & Competitors)\n"
+        "   - Name at least one specific major competitor. Detail one real, current challenge the company is facing right now.\n"
+        "## 5. Next Steps for Beginners\n"
+        "   - Provide 2-3 hyper-practical, zero-dollar 'homework' milestones (like Paper Trading or checking consumer habits).\n\n"
+        "Always place this warm reminder at the very bottom: 'This analysis is for learning purposes only. It is always a smart practice to research comfortably before investing your hard-earned money.'"
+    )
+    return create_react_agent(llm, tools, prompt=system_prompt)
 
-llm = ChatCohere(
-    model="command-a-03-2025",
-    cohere_api_key=os.getenv("COHERE_API_KEY"),
-    temperature=0
-)
-
-system_prompt = (
-    "You are EquiBot, an welcoming, patient, and clear financial mentor for beginner investors. "
-    "Your goal is to make investing feel accessible, safe, and completely jargon-free.\n\n"
-    "CONVERSATIONAL INTERVIEW PATHWAY (CRITICAL RULES):\n"
-    "1. NO IMMEDIATE REPORTS: When a user selects an initial option (A, B, or C), DO NOT immediately suggest a stock or generate a full report.\n"
-    "2. ONE QUESTION AT A TIME: Acknowledge their choice, then ask ONE simple follow-up question to narrow down their specific interests. Wait for their reply. \n"
-    "3. NARROW IT DOWN: If they pick everyday brands, ask what kind of products they actually buy. If they pick tech, ask if they prefer gaming, AI, or hardware. \n"
-    "4. ESTABLISH RISK: Before picking a stock, you MUST ask them a simple question about risk tolerance.\n"
-    "5. ONLY after you have had this back-and-forth dialogue to learn their preferences, you may suggest a specific stock and use your tools to analyze it.\n\n"
-    "REPORT FORMATTING REQUIREMENTS (MUST BE HIGHLY DETAILED):\n"
-    "When you finally output a structured company deep-dive report, you must provide a comprehensive, multi-paragraph breakdown. Format it beautifully with these exact headers:\n"
-    "## 1. Company Profile & Price Snapshot\n"
-    "   - Include the current price, Market Cap (how big the company is), and a simple valuation metric.\n"
-    "   - *CRITICAL EXPLANATION*: You MUST explain what the valuation metric means in plain English (e.g., 'A P/E of 17 means you pay 17 dollars for every 1 dollar the company earns in profit'). Do NOT just spit out a raw number without explaining it.\n"
-    "## 2. How This Company Actually Makes Money (Simple Terms)\n"
-    "   - Break down their primary revenue streams clearly and conceptually.\n"
-    "## 3. Why People Are Excited About It (Growth Factors)\n"
-    "   - Detail specific recent positive news, upcoming product launches, or major industry trends hurting or helping this stock.\n"
-    "## 4. Things to Keep an Eye On (Risks & Competitors)\n"
-    "   - Name at least one specific major competitor. Detail one real, current challenge the company is facing right now.\n"
-    "## 5. Next Steps for Beginners\n"
-    "   - Provide 2-3 hyper-practical, zero-dollar 'homework' milestones (like Paper Trading or checking consumer habits).\n\n"
-    "Always place this warm reminder at the very bottom: 'This analysis is for learning purposes only. It is always a smart practice to research comfortably before investing your hard-earned money.'"
-)
-
-agent_executor = create_react_agent(llm, tools, prompt=system_prompt)
+agent_executor = initialize_agent()
 
 st.set_page_config(page_title="EquiBot Onboarding", page_icon="🌱", layout="centered")
 
@@ -137,9 +138,8 @@ if user_prompt := st.chat_input("Type Option A, B, C, or say hello..."):
     
     with st.chat_message("assistant"):
         with st.spinner("Finding the best way forward..."):
-            
             raw_answer = None
-            max_retries = 3
+            max_retries = 5
             
             for attempt in range(max_retries):
                 try:
@@ -154,7 +154,7 @@ if user_prompt := st.chat_input("Type Option A, B, C, or say hello..."):
                     error_str = str(e)
                     if "429" in error_str or "limit" in error_str.lower():
                         if attempt < max_retries - 1:
-                            time.sleep(4)
+                            time.sleep(6 * (attempt + 1))
                             continue
                     st.error(f"Apologies, an adjustment error occurred: {e}")
                     break
