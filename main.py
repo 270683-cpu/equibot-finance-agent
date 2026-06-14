@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import urllib.request
 import json
 import yfinance as yf
@@ -48,9 +49,7 @@ def web_search(query: str) -> str:
         )
         with urllib.request.urlopen(req, timeout=5) as response:
             html = response.read().decode('utf-8')
-        links = re.findall(r'<a class="result__url" href="([^"]+)"', html)
         snippets = re.findall(r'<a class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
-        titles = re.findall(r'<a class="result__snippet"[^>]*>.*?</a>.*?<a class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
         output = []
         for i in range(min(3, len(snippets))):
             clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
@@ -138,21 +137,33 @@ if user_prompt := st.chat_input("Type Option A, B, C, or say hello..."):
     
     with st.chat_message("assistant"):
         with st.spinner("Finding the best way forward..."):
-            try:
-                formatted_history = []
-                for m in st.session_state["messages"]:
-                    formatted_history.append((m["role"], m["content"]))
-                
-                response = agent_executor.invoke({"messages": formatted_history})
-                raw_answer = response["messages"][-1].content
-                
+            
+            raw_answer = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    formatted_history = []
+                    for m in st.session_state["messages"]:
+                        formatted_history.append((m["role"], m["content"]))
+                    
+                    response = agent_executor.invoke({"messages": formatted_history})
+                    raw_answer = response["messages"][-1].content
+                    break
+                except Exception as e:
+                    error_str = str(e)
+                    if "429" in error_str or "limit" in error_str.lower():
+                        if attempt < max_retries - 1:
+                            time.sleep(4)
+                            continue
+                    st.error(f"Apologies, an adjustment error occurred: {e}")
+                    break
+            
+            if raw_answer:
                 clean_answer = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', raw_answer)
                 clean_answer = clean_answer.replace("`", "")
                 
                 st.markdown(clean_answer)
                 st.session_state["messages"].append({"role": "assistant", "content": clean_answer})
-                
-            except Exception as e:
-                st.error(f"Apologies, an adjustment error occurred: {e}")
 
 st.markdown("<div class='disclaimer-text'>Safe Sandbox Simulation • Learning Environment Active</div>", unsafe_allow_html=True)
