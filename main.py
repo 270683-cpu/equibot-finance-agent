@@ -3,17 +3,11 @@ import re
 import yfinance as yf
 import streamlit as st
 from dotenv import load_dotenv
-
-
 from langchain_cohere import ChatCohere
 from langchain.tools import tool
-from langchain_community.tools import DuckDuckGoSearchResults
 from langgraph.prebuilt import create_react_agent
 
-
 load_dotenv()
-
-
 
 @tool
 def get_stock_price(ticker: str) -> str:
@@ -35,9 +29,20 @@ def financial_calculator(expression: str) -> str:
     except Exception as e:
         return f"Error calculating: {e}"
 
-web_search = DuckDuckGoSearchResults()
-tools = [get_stock_price, financial_calculator, web_search]
+@tool
+def web_search(query: str) -> str:
+    """Useful for searching the web for recent company news, product launches, or industry trends."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+            if results:
+                return "\n".join([f"Title: {r.get('title')}\nSnippet: {r.get('body')}\n" for r in results])
+    except Exception:
+        pass
+    return "Web search is currently undergoing maintenance, but we can proceed with standard financial data analysis."
 
+tools = [get_stock_price, financial_calculator, web_search]
 
 llm = ChatCohere(
     model="command-a-03-2025",
@@ -71,7 +76,6 @@ system_prompt = (
 )
 
 agent_executor = create_react_agent(llm, tools, prompt=system_prompt)
-
 
 st.set_page_config(page_title="EquiBot Onboarding", page_icon="🌱", layout="centered")
 
@@ -125,9 +129,7 @@ if user_prompt := st.chat_input("Type Option A, B, C, or say hello..."):
                 response = agent_executor.invoke({"messages": formatted_history})
                 raw_answer = response["messages"][-1].content
                 
-                # 1. Strip Markdown link structures: [text](link) -> text
                 clean_answer = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', raw_answer)
-                # 2. Strip any remaining text backticks completely
                 clean_answer = clean_answer.replace("`", "")
                 
                 st.markdown(clean_answer)
